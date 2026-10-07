@@ -1,7 +1,8 @@
-numpy
-h5py
-tqdm
-matplotlib
-scikit-image
-scipy
-tifffile
+# Tested with Python 3.14.3
+numpy==2.5.3
+h5py==3.16.0
+tqdm==4.70.1
+matplotlib==3.11.2
+scikit-image==0.26.0
+scipy==1.18.1
+tifffile==2026.9.20
