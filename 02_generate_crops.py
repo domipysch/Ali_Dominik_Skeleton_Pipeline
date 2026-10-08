@@ -23,7 +23,8 @@ BLUR_SIGMA = 2.0                # blur before Otsu, in voxels of the coarsest le
 MIN_TISSUE_FRACTION = 0.9       # a crop needs at least this fraction inside the tissue mask
 MAX_TRIES = 10000               # random positions tried per crop before giving up (cheap: only the mask is checked)
 
-EXTENSIONS = {"h5": ".h5", "tif": ".tif"}     # --output_filetype -> file extension of the crops
+# --output_filetype -> file extension of the crops (.ome.tif: OME-TIFF, so Imaris/Fiji read the voxel size)
+EXTENSIONS = {"h5": ".h5", "tif": ".ome.tif"}
 
 
 def read_ims_level(ims_path, level, channel):
@@ -35,6 +36,23 @@ def read_ims_level(ims_path, level, channel):
         # The stored data is padded up to whole chunks: cut it to the real image size
         size_z, size_y, size_x = [int(group.attrs[f"ImageSize{axis}"].tobytes()) for axis in "ZYX"]
         return group["Data"][:size_z, :size_y, :size_x], level
+
+
+def voxel_size(ims_path, shape):
+    """Voxel size (z, y, x) in µm of a volume of `shape` that covers the whole .ims.
+
+    The .ims stores the physical extent of the image; dividing it by `shape` gives the voxel size
+    of whichever resolution level the .h5 was converted from.
+    """
+    with h5py.File(ims_path, "r") as f:
+        attrs = f["DataSetInfo/Image"].attrs
+        text = lambda name: attrs[name].tobytes().decode()
+        unit = text("Unit")
+        if unit not in ("um", "µm"):
+            raise SystemExit(f"Unexpected unit in the .ims: {unit!r}, expected um")
+        # ExtMin/ExtMax 0, 1, 2 = x, y, z
+        extent = [float(text(f"ExtMax{i}")) - float(text(f"ExtMin{i}")) for i in (2, 1, 0)]
+    return [e / n for e, n in zip(extent, shape)]
 
 
 def tissue_mask(ims_path, channel):
@@ -81,13 +99,23 @@ def find_crop(shape, mask, scale, rng):
                      f"Lower MIN_TISSUE_FRACTION or use smaller crops.")
 
 
-def save_crop(crop, path, filetype):
-    """Write one (z, y, x) crop as .h5 (dataset "data", gzip) or as a zlib-compressed ImageJ z-stack .tif."""
+def save_crop(crop, path, filetype, voxel):
+    """Write one (z, y, x) crop with its voxel size (z, y, x) in µm.
+
+    h5:  dataset "data" (gzip), voxel size in its attribute "element_size_um" (as read by ilastik and Fiji)
+    tif: zlib-compressed OME-TIFF, voxel size as PhysicalSizeX/Y/Z (as read by Imaris and Fiji/Bio-Formats)
+    """
     if filetype == "h5":
         with h5py.File(path, "w") as f_out:
-            f_out.create_dataset("data", data=crop, compression="gzip")
+            dataset = f_out.create_dataset("data", data=crop, compression="gzip")
+            dataset.attrs["element_size_um"] = voxel
     else:
-        tifffile.imwrite(path, crop, imagej=True, metadata={"axes": "ZYX"}, compression="zlib")
+        z, y, x = voxel
+        metadata = {"axes": "ZYX", "PhysicalSizeZ": z, "PhysicalSizeY": y, "PhysicalSizeX": x,
+                    "PhysicalSizeZUnit": "µm", "PhysicalSizeYUnit": "µm", "PhysicalSizeXUnit": "µm"}
+        # Also the plain TIFF resolution tags (pixels per cm: the standard unit), for readers that ignore the OME metadata
+        tifffile.imwrite(path, crop, ome=True, metadata=metadata, compression="zlib",
+                         resolution=(1e4 / x, 1e4 / y), resolutionunit="CENTIMETER")
 
 
 def save_overview(overview, shape, crops, path):
@@ -163,11 +191,13 @@ def main():
 
     with h5py.File(args.input, "r") as f_in:
         src = f_in[DATASET]
+        voxel = voxel_size(args.ims, src.shape)
         print(f"Input Image Size: {src.shape} (z, y, x), {src.dtype}")
+        print(f"Voxel size: {', '.join(f'{v:.4f}' for v in voxel)} µm (z, y, x)")
 
         meta = dict(
             input=str(args.input), ims=str(args.ims), dataset=DATASET, seed=SEED,
-            output_filetype=args.output_filetype,
+            output_filetype=args.output_filetype, voxel_size_um=voxel,
             crop_shape=list(CROP_SHAPE), mask_channel=MASK_CHANNEL, mask_level=level,
             mask_shape=list(mask.shape), otsu_threshold=otsu, blur_sigma=BLUR_SIGMA,
             min_tissue_fraction=MIN_TISSUE_FRACTION, crops=[]
@@ -179,7 +209,7 @@ def main():
         for name, output in zip(names, outputs):
             start, stop, fraction = find_crop(src.shape, mask, scale, rng)
             crop = src[start[0]:stop[0], start[1]:stop[1], start[2]:stop[2]]
-            save_crop(crop, output, args.output_filetype)
+            save_crop(crop, output, args.output_filetype, voxel)
 
             meta["crops"].append(dict(name=name, start=start, stop=stop, tissue_fraction=fraction))
             print(f"{name}: start {start}, stop {stop} (z, y, x)")
