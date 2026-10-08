@@ -12,7 +12,7 @@ import numpy as np
 from tqdm import tqdm
 
 
-TARGET_INPUT_RESOLUTION_LEVEL = 3
+TARGET_INPUT_RESOLUTION_LEVEL = 0
 GZIP_LEVEL = 2              # output compression (1 = fastest, 9 = smallest)
 N_WORKERS = os.cpu_count()
 BATCH = 32                  # chunks per worker task
