@@ -113,9 +113,7 @@ def save_crop(crop, path, filetype, voxel):
         z, y, x = voxel
         metadata = {"axes": "ZYX", "PhysicalSizeZ": z, "PhysicalSizeY": y, "PhysicalSizeX": x,
                     "PhysicalSizeZUnit": "µm", "PhysicalSizeYUnit": "µm", "PhysicalSizeXUnit": "µm"}
-        # Also the plain TIFF resolution tags (pixels per cm: the standard unit), for readers that ignore the OME metadata
-        tifffile.imwrite(path, crop, ome=True, metadata=metadata, compression="zlib",
-                         resolution=(1e4 / x, 1e4 / y), resolutionunit="CENTIMETER")
+        tifffile.imwrite(path, crop, ome=True, metadata=metadata)
 
 
 def save_overview(overview, shape, crops, path):

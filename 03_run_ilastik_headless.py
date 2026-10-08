@@ -4,14 +4,17 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from utils import downsample_h5, downsampled_path
 
 
 DATASET = "data"            # dataset inside the input .h5 (as written by convert.py)
-AXES = "zyx"                # its axis order
+AXES = "zyx"                # its axis order (the output gets the same)
+OUTPUT_DATASET = "data"     # dataset ilastik writes the probabilities to
 N_THREADS = os.cpu_count()  # ilastik worker threads
 # ilastik exports one probability channel per label, in the order the labels appear in the project
 # (label 1 -> channel 0, ...). Only this one is kept; with two labels the other is just 1 - it.
 FOREGROUND_CHANNEL = 0
+DOWNSAMPLING = 16           # a low-res copy of the result (factor per axis) is saved next to it
 
 # Where Windows installers put ilastik
 ILASTIK_GLOBS = [
@@ -50,11 +53,17 @@ def main():
             raise SystemExit(f"Not found: {path}")
 
     # Check output: ilastik fails on an existing (possibly broken) output file, so remove it first
-    if args.output.exists():
-        answer = input(f"Output already exists: {args.output}\nOverwrite? [y/N] ")
+    low_res = downsampled_path(args.output, DOWNSAMPLING)
+    existing = [path for path in (args.output, low_res) if path.exists()]
+    if existing:
+        print("Output already exists:")
+        for path in existing:
+            print(f"  {path}")
+        answer = input("Overwrite? [y/N] ")
         if answer.strip().lower() != "y":
             raise SystemExit("Aborted, nothing written.")
-        args.output.unlink()
+        for path in existing:
+            path.unlink()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -65,10 +74,12 @@ def main():
         "--export_source=Probabilities",
         "--output_format=hdf5",
         f"--output_filename_format={args.output.as_posix()}",
-        "--output_internal_path=data",
+        f"--output_internal_path={OUTPUT_DATASET}",
         f"--input_axes={AXES}",
-        # Output axes are AXES + "c": keep the whole volume, but only the foreground channel
+        # ilastik's result has axes AXES + "c" (one channel per label): keep the whole volume, but only the
+        # foreground channel, then drop the now size-1 "c" axis, so the output is plain (z, y, x)
         f"--cutout_subregion=[(None,None,None,{FOREGROUND_CHANNEL}),(None,None,None,{FOREGROUND_CHANNEL + 1})]",
+        f"--output_axis_order={AXES}",
         # Probabilities as uint8 0..255 instead of float32 0..1 (4x smaller)
         "--export_dtype=uint8",
         "--pipeline_result_drange=(0.0,1.0)",
@@ -85,6 +96,7 @@ def main():
     print(f"Project: {args.project}")
     print(f"Input:   {args.input}/{DATASET} ({AXES})")
     print(f"Output:  {args.output}")
+    print(f"Low-res: {low_res} ({DOWNSAMPLING}x downsampled per axis)")
     print("-" * 80)
 
     # Pass ilastik's log through to the console, watching for fatal messages
@@ -100,7 +112,11 @@ def main():
         raise SystemExit(f"ilastik failed (exit {proc.returncode}{', logged ' + repr(fatal) if fatal else ''})")
     if not args.output.exists():
         raise SystemExit("ilastik exited without error but wrote no output")
-    print(f"Done. Probabilities written to {args.output} ({args.output.stat().st_size / 1e9:.1f} GB)")
+    print(f"Probabilities written to {args.output} ({args.output.stat().st_size / 1e9:.1f} GB)")
+
+    # Low-res copy of the result, e.g. for a quick look at the whole volume
+    downsample_h5(args.output, dataset=OUTPUT_DATASET, factor=DOWNSAMPLING)
+    print(f"Done. Low-res copy written to {low_res}")
 
 
 if __name__ == "__main__":
