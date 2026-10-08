@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 
 
-INPUT_DATASET = "exported_data"     # dataset in the probability .h5 (as written by run_ilastik_headless.py)
+INPUT_DATASET = "data"              # dataset in the probability .h5 (as written by run_ilastik_headless.py)
 OUTPUT_DATASET = "data"             # dataset in the mask .h5 (same name as convert.py)
 GZIP_LEVEL = 2                      # output compression (1 = fastest, 9 = smallest)
 DEFAULT_CHUNKS = (64, 64, 64)       # output chunks if the input is not chunked
