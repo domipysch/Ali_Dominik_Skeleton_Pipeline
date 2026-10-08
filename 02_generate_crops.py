@@ -87,7 +87,7 @@ def save_crop(crop, path, filetype):
         with h5py.File(path, "w") as f_out:
             f_out.create_dataset("data", data=crop, compression="gzip")
     else:
-        tifffile.imwrite(path, crop, imagej=True, metadata={"axes": "ZYX"}, compression="zlib")
+        tifffile.imwrite(path, crop, metadata={"axes": "ZYX"}, compression="zlib")
 
 
 def save_overview(overview, shape, crops, path):
