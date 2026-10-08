@@ -65,7 +65,7 @@ def main():
         "--export_source=Probabilities",
         "--output_format=hdf5",
         f"--output_filename_format={args.output.as_posix()}",
-        "--output_internal_path=exported_data",
+        "--output_internal_path=data",
         f"--input_axes={AXES}",
         # Output axes are AXES + "c": keep the whole volume, but only the foreground channel
         f"--cutout_subregion=[(None,None,None,{FOREGROUND_CHANNEL}),(None,None,None,{FOREGROUND_CHANNEL + 1})]",
