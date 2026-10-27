@@ -7,8 +7,8 @@ Input: reconstructed `.ims` file by Luxendo.
 | 1 | `01_convert.py` | `.ims` | one 8-bit `.h5` per channel, `-meta.json` | Converts every channel to uint8, chunked, gzip-compressed `.h5` for ilastik |
 | 2 | `02_generate_crops.py` | `.h5` (step 1), `.ims` | crops (`.h5`), `meta.json`, overview `.png` | Cuts random crops (with voxel size) from the tissue region, for training ilastik |
 | 3 | manual (ilastik GUI) | crops (step 2) | trained `.ilp` | Train the pixel classifier: label foreground / background |
-| 4 | `03_run_ilastik_headless.py` | `.h5` (step 1), trained `.ilp` (step 3) | probability `.h5` (uint8, z/y/x), `_res_16x16x16.h5` | Runs the trained pixel classifier headless on the full volume, plus a 16x downsampled copy |
-| 5 | `04_apply_gaussian.py` | probability `.h5` (step 4), sigma z/y/x | smoothed `.h5` (uint8), `-meta.json` | Smooths the probability map with a Gaussian (default sigma 0, 1.2, 1.2 voxels) |
+| 4 | `03_run_ilastik_headless.py` | `.h5` (step 1), trained `.ilp` (step 3) | probability map `.h5` (uint8, z/y/x), `_res_16x16x16.h5` | Runs the trained pixel classifier headless on the full volume, plus a 16x downsampled copy |
+| 5 | `04_apply_gaussian.py` | probability map `.h5` (step 4), sigma z/y/x | smoothed `.h5` (uint8), `-meta.json` | Smooths the probability map with a Gaussian (default sigma 0, 1.2, 1.2 voxels) |
 | 6 | `02_generate_crops.py` | smoothed `.h5` (step 5), `.ims` | crops (`.ome.tif`), `meta.json`, overview `.png` | Cuts random crops (with voxel size) from the smoothed map, for viewing |
 | 7 | manual (Imaris) | crops (step 6) | low / high threshold 0–255 | View the crops and decide on the two thresholds |
 | 8 | `05_apply_threshold.py` | smoothed `.h5` (step 5), low / high (step 7) | binary mask `.h5` (0/1), `_res_16x16x16.h5`, `-meta.json` | Hysteresis threshold: keeps voxels > low connected to a voxel > high, plus a 16x downsampled copy |
@@ -30,8 +30,8 @@ flowchart TD
     ilp[/"trained .ilp"/]
 
     s4["4 · 03_run_ilastik_headless.py"]
-    prob[/"probability .h5 (foreground, 0–255)"/]
-    prob_low[/"probability _res_16x16x16.h5"/]
+    prob[/"probability map .h5 (foreground, 0–255)"/]
+    prob_low[/"probability map _res_16x16x16.h5"/]
 
     s5["5 · 04_apply_gaussian.py"]
     smooth[/"smoothed .h5"/]
