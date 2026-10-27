@@ -31,7 +31,9 @@ def smooth_block(region, sigma, halo):
     """Smooth one block in a worker -> its output chunks as [(chunk offset, gzip bytes)], all-zero chunks left out."""
     # Block plus halo (cut at the volume border, where the filter mirrors the data as usual)
     padded = tuple(slice(max(r.start - h, 0), min(r.stop + h, size)) for r, h, size in zip(region, halo, source.shape))
-    smoothed = ndimage.gaussian_filter(source[padded].astype(np.float32), sigma, truncate=TRUNCATE)
+    # A trailing channel axis (z, y, x, 1) is dropped on reading
+    read = padded + (0,) if source.ndim == 4 else padded
+    smoothed = ndimage.gaussian_filter(source[read].astype(np.float32), sigma, truncate=TRUNCATE)
 
     # Cut the halo off again
     inner = tuple(slice(r.start - p.start, r.stop - p.start) for r, p in zip(region, padded))
@@ -60,9 +62,10 @@ def main():
         raise SystemExit(f"--output must end with .h5: {args.output}")
     with h5py.File(args.input, "r") as f_in:
         src = f_in[DATASET]
-        if src.ndim != 3 or src.dtype != np.uint8:
-            raise SystemExit(f"Expected uint8 (z, y, x) probabilities, got {src.dtype} {src.shape}")
-        shape = src.shape
+        single_channel = src.ndim == 4 and src.shape[3] == 1
+        if (src.ndim != 3 and not single_channel) or src.dtype != np.uint8:
+            raise SystemExit(f"Expected uint8 (z, y, x) or (z, y, x, 1) probabilities, got {src.dtype} {src.shape}")
+        shape = src.shape[:3]  # the output is always (z, y, x)
 
     # Check output (e.g. smoothed.h5 -> smoothed-meta.json, as in convert.py)
     meta_path = args.output.with_name(f"{args.output.stem}-meta.json")
