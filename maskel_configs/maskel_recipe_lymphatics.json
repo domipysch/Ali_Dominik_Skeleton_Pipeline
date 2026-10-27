@@ -1,0 +1,36 @@
+{
+  "schema_version": 6,
+  "extraction": {
+    "branches": true,
+    "branch_color_property": "tortuosity",
+    "branch_text": false,
+    "nodes": false,
+    "summary": false,
+    "fractal_dimension": false,
+    "mask_radius": false,
+    "junction_cleanup": false,
+    "cleanup_threshold_factor": 2.5,
+    "prune_spurs": true,
+    "min_spur_length": 80.0,
+    "spur_iterations": 2,
+    "closing_iterations": 2,
+    "fill_holes": true,
+    "max_hole_size": 1000,
+    "show_preprocessed": false,
+    "spacing": [
+      3.0,
+      0.433,
+      0.433
+    ]
+  },
+  "output": {
+    "write_skeleton_npy": false,
+    "write_skeleton_png": false,
+    "write_summary_csv": false,
+    "write_branch_csv": false,
+    "write_node_csv": false,
+    "write_radius": false,
+    "write_graphml": false,
+    "write_networkx_graph": false
+  }
+}
