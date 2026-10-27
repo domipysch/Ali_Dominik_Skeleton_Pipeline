@@ -1,12 +1,53 @@
 import itertools
 import sys
+import zlib
+from collections import deque
 from pathlib import Path
 import h5py
+import numpy as np
 from tqdm import tqdm
 
 
 GZIP_LEVEL = 2      # output compression (1 = fastest, 9 = smallest)
 BLOCK = 256         # input voxels per axis read at once (a multiple of the factor and of the 64 voxel chunks)
+
+
+def blocks(shape, block):
+    """Slices (z, y, x) that tile a volume of `shape` in blocks of `block`, in z, y, x order (smaller at the borders)."""
+    starts = itertools.product(*(range(0, size, step) for size, step in zip(shape, block)))
+    return [tuple(slice(s, min(s + b, size)) for s, b, size in zip(start, block, shape)) for start in starts]
+
+
+def ordered_results(pool, function, tasks, max_pending):
+    """Run function(*task) for every task in the worker pool; yield the results in task order.
+
+    At most max_pending tasks are in flight at once, which bounds the memory use.
+    """
+    pending = deque()
+    for task in tasks:
+        pending.append(pool.submit(function, *task))
+        if len(pending) > max_pending:
+            yield pending.popleft().result()        # waits in case it is not ready yet
+    while pending:
+        yield pending.popleft().result()
+
+
+def compress_chunks(data, region, chunks, gzip_level):
+    """Split a block `data` (located at `region` in the volume) into gzip-compressed HDF5 chunks.
+
+    Returns [(chunk offset, bytes)] for dataset.id.write_direct_chunk; all-zero chunks are left out, they read back
+    as 0 (the fill value) and take no space. `region` must start on chunk borders.
+    """
+    out = []
+    for piece_region in blocks(data.shape, chunks):
+        piece = data[piece_region]
+        if not piece.any():
+            continue
+        # HDF5 stores border chunks at full size too: pad them up
+        piece = np.pad(piece, [(0, c - n) for c, n in zip(chunks, piece.shape)])
+        offset = tuple(r.start + p.start for r, p in zip(region, piece_region))
+        out.append((offset, zlib.compress(piece.tobytes(), gzip_level)))
+    return out
 
 
 def downsampled_path(path, factor=16):
