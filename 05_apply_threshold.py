@@ -18,7 +18,7 @@ GZIP_LEVEL = 2              # output compression (1 = fastest, 9 = smallest)
 DOWNSAMPLING = 16           # a low-res copy of the mask (factor per axis) is saved next to it
 CHUNKS = (64, 64, 64)       # output chunks (z, y, x)
 BLOCK = (64, 512, 512)      # voxels (z, y, x) one worker labels at once (a multiple of CHUNKS)
-N_WORKERS = os.cpu_count()  # parallel worker processes
+N_WORKERS = min(32, (os.cpu_count() or 1))  # parallel worker processes
 MAX_PENDING = 2 * N_WORKERS # blocks in flight (bounds the memory use)
 
 source = None               # the input dataset, opened once in each worker process
