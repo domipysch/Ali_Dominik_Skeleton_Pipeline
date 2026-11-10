@@ -12,8 +12,9 @@ Input: reconstructed `.ims` file by Luxendo.
 | 6 | `02_generate_crops.py` | smoothed `.h5` (step 5), `.ims` | crops (`.ome.tif`), `meta.json`, overview `.png` | Cuts random crops (with voxel size) from the smoothed map, for viewing |
 | 7 | manual (Imaris) | crops (step 6) | low / high threshold 0–255 | View the crops and decide on the two thresholds |
 | 8 | `05_apply_threshold.py` | smoothed `.h5` (step 5), low / high (step 7) | binary mask `.h5` (0/1), `_res_16x16x16.h5`, `-meta.json` | Hysteresis threshold: keeps voxels > low connected to a voxel > high, plus a 16x downsampled copy |
+| 9 | `06_select_lcc.py` | binary mask `.h5` (step 8), or its `_res_16x16x16.h5` | binary mask `.h5` (0/1), `_res_16x16x16.h5`, `-meta.json` | Keeps only the largest connected component (6 neighbours), plus a 16x downsampled copy |
 
-`utils.py`: `downsample_h5()` (mean over 16×16×16 voxels), used by steps 4 and 8.
+`utils.py`: `downsample_h5()` (mean over 16×16×16 voxels), used by steps 4, 8 and 9.
 
 
 ```mermaid
@@ -46,6 +47,10 @@ flowchart TD
     mask[/"binary mask .h5 (0/1)"/]
     mask_low[/"mask _res_16x16x16.h5"/]
 
+    s9["9 · 06_select_lcc.py"]
+    lcc[/"largest component .h5 (0/1)"/]
+    lcc_low[/"largest component _res_16x16x16.h5"/]
+
     ims --> s1 --> h5
     h5 --> s2
     ims -. tissue region, voxel size .-> s2
@@ -62,11 +67,14 @@ flowchart TD
     thr --> s8
     s8 --> mask
     s8 --> mask_low
+    mask --> s9
+    s9 --> lcc
+    s9 --> lcc_low
 
     classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
     classDef manual fill:#fef3c7,stroke:#d97706,color:#78350f
     classDef data fill:#f3f4f6,stroke:#6b7280,color:#111827
-    class s1,s2,s4,s5,s6,s8 script
+    class s1,s2,s4,s5,s6,s8,s9 script
     class s3,s7 manual
-    class ims,h5,crops_train,ilp,prob,prob_low,smooth,crops_view,thr,mask,mask_low data
+    class ims,h5,crops_train,ilp,prob,prob_low,smooth,crops_view,thr,mask,mask_low,lcc,lcc_low data
 ```
