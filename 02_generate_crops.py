@@ -10,6 +10,7 @@ import tifffile
 from matplotlib.patches import Rectangle
 from scipy import ndimage
 from skimage.filters import threshold_otsu
+from utils import voxel_size
 
 
 CROP_SHAPE = (200, 500, 500)     # (z, y, x) voxels per crop
@@ -36,23 +37,6 @@ def read_ims_level(ims_path, level, channel):
         # The stored data is padded up to whole chunks: cut it to the real image size
         size_z, size_y, size_x = [int(group.attrs[f"ImageSize{axis}"].tobytes()) for axis in "ZYX"]
         return group["Data"][:size_z, :size_y, :size_x], level
-
-
-def voxel_size(ims_path, shape):
-    """Voxel size (z, y, x) in µm of a volume of `shape` that covers the whole .ims.
-
-    The .ims stores the physical extent of the image; dividing it by `shape` gives the voxel size
-    of whichever resolution level the .h5 was converted from.
-    """
-    with h5py.File(ims_path, "r") as f:
-        attrs = f["DataSetInfo/Image"].attrs
-        text = lambda name: attrs[name].tobytes().decode()
-        unit = text("Unit")
-        if unit not in ("um", "µm"):
-            raise SystemExit(f"Unexpected unit in the .ims: {unit!r}, expected um")
-        # ExtMin/ExtMax 0, 1, 2 = x, y, z
-        extent = [float(text(f"ExtMax{i}")) - float(text(f"ExtMin{i}")) for i in (2, 1, 0)]
-    return [e / n for e, n in zip(extent, shape)]
 
 
 def tissue_mask(ims_path, channel):
@@ -189,7 +173,11 @@ def main():
 
     with h5py.File(args.input, "r") as f_in:
         src = f_in[DATASET]
-        voxel = voxel_size(args.ims, src.shape)
+        # Voxel size stored in the .h5 (e.g. by 01b_downsample_isotropic.py), else from the .ims extent
+        if "element_size_um" in src.attrs:
+            voxel = [float(v) for v in src.attrs["element_size_um"]]
+        else:
+            voxel = voxel_size(args.ims, src.shape)
         print(f"Input Image Size: {src.shape} (z, y, x), {src.dtype}")
         print(f"Voxel size: {', '.join(f'{v:.4f}' for v in voxel)} µm (z, y, x)")
 

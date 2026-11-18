@@ -50,6 +50,23 @@ def compress_chunks(data, region, chunks, gzip_level):
     return out
 
 
+def voxel_size(ims_path, shape):
+    """Voxel size (z, y, x) in µm of a volume of `shape` that covers the whole .ims.
+
+    The .ims stores the physical extent of the image; dividing it by `shape` gives the voxel size
+    of whichever resolution level the .h5 was converted from.
+    """
+    with h5py.File(ims_path, "r") as f:
+        attrs = f["DataSetInfo/Image"].attrs
+        text = lambda name: attrs[name].tobytes().decode()
+        unit = text("Unit")
+        if unit not in ("um", "µm"):
+            raise SystemExit(f"Unexpected unit in the .ims: {unit!r}, expected um")
+        # ExtMin/ExtMax 0, 1, 2 = x, y, z
+        extent = [float(text(f"ExtMax{i}")) - float(text(f"ExtMin{i}")) for i in (2, 1, 0)]
+    return [e / n for e, n in zip(extent, shape)]
+
+
 def downsampled_path(path, factor=16):
     """Where downsample_h5 saves its result: xxx.h5 -> xxx_res_16x16x16.h5 next to it."""
     path = Path(path)

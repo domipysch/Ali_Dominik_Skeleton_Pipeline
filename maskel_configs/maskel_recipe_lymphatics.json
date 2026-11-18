@@ -1,5 +1,5 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "spacing": [3.0, 0.43, 0.43],
   "preprocessing": {
     "opening_radius": 0,
@@ -24,7 +24,7 @@
   "output": {
     "write_summary_csv": true,
     "write_branch_csv": true,
-    "write_node_csv": true,
+    "write_node_h5": true,
     "write_graphml": false,
     "write_networkx_graph": false,
     "write_skeleton_mask": true,
