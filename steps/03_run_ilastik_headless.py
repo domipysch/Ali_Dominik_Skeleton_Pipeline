@@ -4,7 +4,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from utils import downsample_h5, downsampled_path
+import h5py
+from utils import read_voxel_size
 
 
 DATASET = "data"            # dataset inside the input .h5 (as written by convert.py)
@@ -14,7 +15,6 @@ N_THREADS = os.cpu_count()  # ilastik worker threads
 # ilastik exports one probability channel per label, in the order the labels appear in the project
 # (label 1 -> channel 0, ...). Only this one is kept; with two labels the other is just 1 - it.
 FOREGROUND_CHANNEL = 0
-DOWNSAMPLING = 16           # a low-res copy of the result (factor per axis) is saved next to it
 
 # Where Windows installers put ilastik
 ILASTIK_GLOBS = [
@@ -53,17 +53,12 @@ def main():
             raise SystemExit(f"Not found: {path}")
 
     # Check output: ilastik fails on an existing (possibly broken) output file, so remove it first
-    low_res = downsampled_path(args.output, DOWNSAMPLING)
-    existing = [path for path in (args.output, low_res) if path.exists()]
-    if existing:
-        print("Output already exists:")
-        for path in existing:
-            print(f"  {path}")
+    if args.output.exists():
+        print(f"Output already exists: {args.output}")
         answer = input("Overwrite? [y/N] ")
         if answer.strip().lower() != "y":
             raise SystemExit("Aborted, nothing written.")
-        for path in existing:
-            path.unlink()
+        args.output.unlink()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -96,7 +91,6 @@ def main():
     print(f"Project: {args.project}")
     print(f"Input:   {args.input}/{DATASET} ({AXES})")
     print(f"Output:  {args.output}")
-    print(f"Low-res: {low_res} ({DOWNSAMPLING}x downsampled per axis)")
     print("-" * 80)
 
     # Pass ilastik's log through to the console, watching for fatal messages
@@ -114,9 +108,15 @@ def main():
         raise SystemExit("ilastik exited without error but wrote no output")
     print(f"Probabilities written to {args.output} ({args.output.stat().st_size / 1e9:.1f} GB)")
 
-    # Low-res copy of the result, e.g. for a quick look at the whole volume
-    downsample_h5(args.output, dataset=OUTPUT_DATASET, factor=DOWNSAMPLING)
-    print(f"Done. Low-res copy written to {low_res}")
+    # Voxel size of the input, stored with the probabilities (ilastik does not carry it over)
+    voxel = read_voxel_size(args.input, DATASET)
+    if voxel is None:
+        print("Warning: the input has no voxel size (element_size_um), the output gets none either")
+    else:
+        with h5py.File(args.output, "r+") as f_out:
+            f_out[OUTPUT_DATASET].attrs["element_size_um"] = voxel
+        print(f"Voxel size: {', '.join(f'{v:.4f}' for v in voxel)} µm (z, y, x)")
+    print("Done.")
 
 
 if __name__ == "__main__":

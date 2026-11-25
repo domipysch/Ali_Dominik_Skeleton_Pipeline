@@ -36,11 +36,11 @@ def test_tiled_equals_one_call(mask_path, tmp_path):
     assert tiled.shape == whole.shape
     assert whole.any()
     assert np.array_equal(tiled, whole), f"{np.count_nonzero(tiled != whole)} voxels differ"
-    assert (tmp_path / "lcc_res_16x16x16.h5").exists()
+    assert not (tmp_path / "lcc_res_16x16x16.h5").exists()         # no downsampled copy any more
 
 
 def test_small_input(tmp_path):
-    """A volume smaller than one chunk (like a low-res copy) works, without a low-res copy of its own."""
+    """A volume smaller than one chunk works."""
     rng = np.random.default_rng(1)
     mask = (rng.random((6, 70, 40)) > 0.6).astype(np.uint8)
     path = tmp_path / "small.h5"
@@ -50,7 +50,6 @@ def test_small_input(tmp_path):
     output = tmp_path / "small_lcc.h5"
     run_script("06_select_lcc.py", "--input", path, "--output", output)
     assert np.array_equal(read_data(output), largest_component(mask))
-    assert not (tmp_path / "small_lcc_res_16x16x16.h5").exists()
 
 
 def test_empty_mask(tmp_path):

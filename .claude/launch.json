@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "orchestrator-demo",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "orchestrator", "C:\\Users\\zi69hebi\\AppData\\Local\\Temp\\claude\\4d78b59297febfae\\93a58019-4eef-4887-86c9-63be5591d0b0\\scratchpad\\demo_branches", "--no-browser", "--port", "8091"],
+      "port": 8091
+    }
+  ]
+}

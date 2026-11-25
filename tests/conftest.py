@@ -7,12 +7,13 @@ import pytest
 from scipy import ndimage
 
 REPO = Path(__file__).parent.parent
+SCRIPTS = REPO / "steps"
 SHAPE = (100, 1100, 1030)       # spans several (64, 512, 512) blocks, with partial blocks and chunks at the border
 
 
 def run_script(name, *args):
     """Run one of the pipeline scripts as a command (so its worker processes run as in real use)."""
-    subprocess.run([sys.executable, str(REPO / name), *map(str, args)], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run([sys.executable, str(SCRIPTS / name), *map(str, args)], check=True, stdout=subprocess.DEVNULL)
 
 
 def read_data(path):

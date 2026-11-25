@@ -13,7 +13,7 @@ from skimage.filters import threshold_otsu
 from utils import voxel_size
 
 
-CROP_SHAPE = (200, 500, 500)     # (z, y, x) voxels per crop
+CROP_SHAPE = (200, 500, 500)     # default of --crop-shape: (z, y, x) voxels per crop
 SEED = None                      # same seed -> same crops ("controls randomness")
 DATASET = "data"                 # dataset name in the input .h5 (as written by convert.py)
 PREVIEW_LEVEL = 3                # .ims level the whole-image projection in the overview image is made from
@@ -21,7 +21,7 @@ PREVIEW_LEVEL = 3                # .ims level the whole-image projection in the 
 # Tissue region: crops are only taken where the tissue is
 MASK_CHANNEL = 0                # .ims channel for the tissue mask and the overview (use the channel of --input)
 BLUR_SIGMA = 2.0                # blur before Otsu, in voxels of the coarsest level
-MIN_TISSUE_FRACTION = 0.9       # a crop needs at least this fraction inside the tissue mask
+MIN_TISSUE_FRACTION = 0.9       # default of --min-tissue-fraction: this fraction of a crop inside the tissue
 MAX_TRIES = 10000               # random positions tried per crop before giving up (cheap: only the mask is checked)
 
 # --output_filetype -> file extension of the crops (.ome.tif: OME-TIFF, so Imaris/Fiji read the voxel size)
@@ -67,20 +67,20 @@ def tissue_fraction(mask, scale, start, stop):
     return float(mask[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]].mean())
 
 
-def find_crop(shape, mask, scale, rng):
-    """Random crop inside the image with at least MIN_TISSUE_FRACTION in the tissue: (start, stop, fraction)."""
-    for size, crop in zip(shape, CROP_SHAPE):
+def find_crop(shape, mask, scale, rng, min_fraction=MIN_TISSUE_FRACTION, crop_shape=CROP_SHAPE):
+    """Random crop inside the image with at least min_fraction in the tissue: (start, stop, fraction)."""
+    for size, crop in zip(shape, crop_shape):
         if size < crop:
             raise SystemExit(f"Image too small: {size} voxels cannot hold a crop of {crop}")
 
     for tries in range(1, MAX_TRIES + 1):
-        start = [int(rng.integers(0, size - crop + 1)) for size, crop in zip(shape, CROP_SHAPE)]
-        stop = [s + c for s, c in zip(start, CROP_SHAPE)]
+        start = [int(rng.integers(0, size - crop + 1)) for size, crop in zip(shape, crop_shape)]
+        stop = [s + c for s, c in zip(start, crop_shape)]
         fraction = tissue_fraction(mask, scale, start, stop)
-        if fraction >= MIN_TISSUE_FRACTION:
+        if fraction >= min_fraction:
             return start, stop, fraction
-    raise SystemExit(f"No crop with {MIN_TISSUE_FRACTION:.0%} inside the tissue found in {MAX_TRIES} tries. "
-                     f"Lower MIN_TISSUE_FRACTION or use smaller crops.")
+    raise SystemExit(f"No crop with {min_fraction:.0%} inside the tissue found in {MAX_TRIES} tries. "
+                     f"Lower --min-tissue-fraction or use smaller crops.")
 
 
 def save_crop(crop, path, filetype, voxel):
@@ -134,7 +134,16 @@ def main():
     parser.add_argument("--n-crops", type=int, required=True, help="number of crops to generate")
     parser.add_argument("--output_filetype", choices=list(EXTENSIONS), default="h5",
                         help="file type of the crops: h5 (default) or tif")
+    parser.add_argument("--min-tissue-fraction", type=float, default=MIN_TISSUE_FRACTION,
+                        help=f"a crop needs at least this fraction inside the tissue mask, 0..1 "
+                             f"(default {MIN_TISSUE_FRACTION})")
+    parser.add_argument("--crop-shape", type=int, nargs=3, default=list(CROP_SHAPE), metavar=("Z", "Y", "X"),
+                        help=f"size of each crop in voxels (default {' '.join(map(str, CROP_SHAPE))})")
     args = parser.parse_args()
+    if min(args.crop_shape) < 1:
+        raise SystemExit(f"--crop-shape must be at least 1 voxel per axis, not {args.crop_shape}")
+    if not 0 <= args.min_tissue_fraction <= 1:
+        raise SystemExit(f"--min-tissue-fraction must be between 0 and 1, not {args.min_tissue_fraction}")
 
     # Check input and output
     for path in (args.input, args.ims):
@@ -159,7 +168,7 @@ def main():
     print(f"Input: {args.input}")
     print(f"Tissue region from: {args.ims} (channel {MASK_CHANNEL})")
     print(f"Output: {args.output} ({args.output_filetype})")
-    print(f"Creating {args.n_crops} crops of {CROP_SHAPE} (z, y, x) with at least {MIN_TISSUE_FRACTION:.0%} overlap with tissue")
+    print(f"Creating {args.n_crops} crops of {tuple(args.crop_shape)} (z, y, x) with at least {args.min_tissue_fraction:.0%} overlap with tissue")
     print("-" * 80)
 
     rng = np.random.default_rng(SEED)
@@ -184,16 +193,16 @@ def main():
         meta = dict(
             input=str(args.input), ims=str(args.ims), dataset=DATASET, seed=SEED,
             output_filetype=args.output_filetype, voxel_size_um=voxel,
-            crop_shape=list(CROP_SHAPE), mask_channel=MASK_CHANNEL, mask_level=level,
+            crop_shape=list(args.crop_shape), mask_channel=MASK_CHANNEL, mask_level=level,
             mask_shape=list(mask.shape), otsu_threshold=otsu, blur_sigma=BLUR_SIGMA,
-            min_tissue_fraction=MIN_TISSUE_FRACTION, crops=[]
+            min_tissue_fraction=args.min_tissue_fraction, crops=[]
         )
 
         # Mask voxels per image voxel, per axis (both cover the same physical volume)
         scale = [m / n for m, n in zip(mask.shape, src.shape)]
 
         for name, output in zip(names, outputs):
-            start, stop, fraction = find_crop(src.shape, mask, scale, rng)
+            start, stop, fraction = find_crop(src.shape, mask, scale, rng, args.min_tissue_fraction, args.crop_shape)
             crop = src[start[0]:stop[0], start[1]:stop[1], start[2]:stop[2]]
             save_crop(crop, output, args.output_filetype, voxel)
 

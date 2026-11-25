@@ -67,6 +67,13 @@ def voxel_size(ims_path, shape):
     return [e / n for e, n in zip(extent, shape)]
 
 
+def read_voxel_size(path, dataset="data"):
+    """Voxel size (z, y, x) in µm stored in the "element_size_um" attribute of an .h5 dataset, or None."""
+    with h5py.File(path, "r") as f:
+        value = f[dataset].attrs.get("element_size_um")
+    return None if value is None else [float(v) for v in value]
+
+
 def downsampled_path(path, factor=16):
     """Where downsample_h5 saves its result: xxx.h5 -> xxx_res_16x16x16.h5 next to it."""
     path = Path(path)

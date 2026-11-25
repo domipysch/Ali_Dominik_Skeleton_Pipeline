@@ -10,12 +10,11 @@ from scipy import ndimage
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from tqdm import tqdm
-from utils import blocks, compress_chunks, downsample_h5, downsampled_path, ordered_results
+from utils import blocks, compress_chunks, ordered_results
 
 
 DATASET = "data"            # dataset in the input (as written by 04_apply_gaussian.py) and in the output
 GZIP_LEVEL = 2              # output compression (1 = fastest, 9 = smallest)
-DOWNSAMPLING = 16           # a low-res copy of the mask (factor per axis) is saved next to it
 CHUNKS = (64, 64, 64)       # output chunks (z, y, x)
 BLOCK = (64, 512, 512)      # voxels (z, y, x) one worker labels at once (a multiple of CHUNKS)
 N_WORKERS = min(32, (os.cpu_count() or 1))  # parallel worker processes
@@ -78,11 +77,11 @@ def main():
         if src.ndim != 3 or src.dtype != np.uint8:
             raise SystemExit(f"Expected uint8 (z, y, x) probabilities, got {src.dtype} {src.shape}")
         shape = src.shape
+        voxel = src.attrs.get("element_size_um")    # voxel size (z, y, x) in µm, carried over to the output
 
     # Check output (e.g. mask.h5 -> mask-meta.json, as in convert.py)
     meta_path = args.output.with_name(f"{args.output.stem}-meta.json")
-    low_res = downsampled_path(args.output, DOWNSAMPLING)
-    existing = [path for path in (args.output, meta_path, low_res) if path.exists()]
+    existing = [path for path in (args.output, meta_path) if path.exists()]
     if existing:
         print("Output already exists:")
         for path in existing:
@@ -90,16 +89,15 @@ def main():
         answer = input("Overwrite? [y/N] ")
         if answer.strip().lower() != "y":
             raise SystemExit("Aborted, nothing written.")
-        # downsample_h5 refuses to overwrite, so remove the old low-res copy
-        low_res.unlink(missing_ok=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     print("-" * 80)
     print(f"Input:  {args.input}")
     print(f"Output: {args.output}")
-    print(f"Low-res: {low_res} ({DOWNSAMPLING}x downsampled per axis)")
     print(f"Shape: {shape} (z, y, x), {N_WORKERS} workers")
     print(f"Mask: voxels > {args.low} whose connected region contains a voxel > {args.high} -> 1, else 0")
+    if voxel is None:
+        print("Warning: the input has no voxel size (element_size_um), the output gets none either")
     print("-" * 80)
 
     # The volume does not fit in memory, but a connected region can span many blocks. So:
@@ -158,6 +156,8 @@ def main():
                                        compression="gzip", compression_opts=GZIP_LEVEL)
             dst.attrs["low"] = args.low
             dst.attrs["high"] = args.high
+            if voxel is not None:
+                dst.attrs["element_size_um"] = voxel
 
             results = ordered_results(pool, mask_block, mask_tasks(), MAX_PENDING)
             for chunks in tqdm(results, total=len(regions), unit="block", desc="Pass 2/2: writing", file=sys.stdout):
@@ -169,12 +169,8 @@ def main():
     meta_path.write_text(json.dumps(meta, indent=2))
 
     print("-" * 80)
-    print(f"Mask written to {args.output}")
+    print(f"Done. Mask written to {args.output}")
     print(f"Settings written to {meta_path}")
-
-    # Low-res copy of the mask, e.g. for a quick look at the whole volume
-    downsample_h5(args.output, dataset=DATASET, factor=DOWNSAMPLING)
-    print(f"Done. Low-res copy written to {low_res}")
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ def main():
         if (src.ndim != 3 and not single_channel) or src.dtype != np.uint8:
             raise SystemExit(f"Expected uint8 (z, y, x) or (z, y, x, 1) probabilities, got {src.dtype} {src.shape}")
         shape = src.shape[:3]  # the output is always (z, y, x)
+        voxel = src.attrs.get("element_size_um")    # voxel size (z, y, x) in µm, carried over to the output
 
     # Check output (e.g. smoothed.h5 -> smoothed-meta.json, as in convert.py)
     meta_path = args.output.with_name(f"{args.output.stem}-meta.json")
@@ -84,6 +85,8 @@ def main():
     print(f"Output: {args.output}")
     print(f"Shape: {shape} (z, y, x)")
     print(f"Gaussian sigma: {sigma} voxels (z, y, x), {N_WORKERS} workers")
+    if voxel is None:
+        print("Warning: the input has no voxel size (element_size_um), the output gets none either")
     print("-" * 80)
 
     # Each block is read with this many extra voxels per side, so the filter sees the same neighbourhood
@@ -95,6 +98,8 @@ def main():
         dst = f_out.create_dataset(DATASET, shape=shape, dtype=np.uint8, chunks=CHUNKS,
                                    compression="gzip", compression_opts=GZIP_LEVEL)
         dst.attrs["sigma"] = sigma
+        if voxel is not None:
+            dst.attrs["element_size_um"] = voxel
 
         with ProcessPoolExecutor(N_WORKERS, initializer=open_input, initargs=(str(args.input),)) as pool:
             tasks = ((region, sigma, halo) for region in regions)

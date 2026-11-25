@@ -10,6 +10,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 from tqdm import tqdm
+from utils import voxel_size
 
 
 TARGET_INPUT_RESOLUTION_LEVEL = 0
@@ -118,6 +119,8 @@ def main():
                         metavar=("CHANNEL", "LO", "HI"),
                         help="fixed 8-bit window for one channel, e.g. --range 0 0 30000 (repeat for more "
                              "channels); channels without --range use min/max of the coarsest level")
+    parser.add_argument("--channel", type=int, action="append", default=[],
+                        help="convert only this channel (repeat for more); default: all channels")
     args = parser.parse_args()
 
     # Manual 8-bit windows: {channel: (lo, hi)}
@@ -138,12 +141,16 @@ def main():
         unknown = [channel for channel in manual_ranges if not 0 <= channel < n_channels]
         if unknown:
             raise SystemExit(f"--range for channel(s) {unknown}, but the input only has channels 0..{n_channels - 1}")
+        unknown = [channel for channel in args.channel if not 0 <= channel < n_channels]
+        if unknown:
+            raise SystemExit(f"--channel {unknown}, but the input only has channels 0..{n_channels - 1}")
+        channels = sorted(set(args.channel)) if args.channel else list(range(n_channels))
 
         # One output file per channel, e.g. out.h5 -> out_channel0.h5
-        outputs = [args.output.with_name(f"{args.output.stem}_channel{channel}.h5") for channel in range(n_channels)]
+        outputs = {channel: args.output.with_name(f"{args.output.stem}_channel{channel}.h5") for channel in channels}
 
         # Check output
-        existing = [path for path in outputs if path.exists()]
+        existing = [path for path in outputs.values() if path.exists()]
         if existing:
             print("Output already exists:")
             for path in existing:
@@ -155,17 +162,22 @@ def main():
         print("-" * 80)
         print(f"Input: {args.input}")
         print("Output:")
-        for path in outputs:
+        for path in outputs.values():
             print(f"  {path}")
-        print(f"Converting {n_channels} channels.")
+        print(f"Converting {len(channels)} of {n_channels} channels.")
 
         # Settings of this run, saved next to the output
         meta = dict(resolution_level=TARGET_INPUT_RESOLUTION_LEVEL, gzip_level=GZIP_LEVEL, channels={})
 
-        for channel, out_path in enumerate(outputs):
+        for channel, out_path in outputs.items():
 
             # Define input file
-            src = timepoint[f"Channel {channel}/Data"]
+            group = timepoint[f"Channel {channel}"]
+            src = group["Data"]
+
+            # Voxel size from the real image size (the stored data can be padded up to whole chunks)
+            image_size = [int(group.attrs[f"ImageSize{axis}"].tobytes()) for axis in "ZYX"]
+            voxel = voxel_size(args.input, image_size)
 
             # Syntax checks
             if src.dtype != np.uint16 or not src.shuffle or src.compression != "gzip":
@@ -183,6 +195,7 @@ def main():
             print(f"Channel {channel}")
             print(f"Shape: {src.shape} (z, y, x)")
             print(f"Chunk-size: {src.chunks} (z, y, x)")
+            print(f"Voxel size: {', '.join(f'{v:.4f}' for v in voxel)} µm (z, y, x)")
             print(f"8-bit window: {lo} .. {hi} ({range_source})")
 
             # Create output file with one dataset
@@ -196,10 +209,12 @@ def main():
                     compression_opts=GZIP_LEVEL
                 )
                 dst.attrs["range"] = [lo, hi]
+                dst.attrs["element_size_um"] = voxel     # voxel size (z, y, x), as read by ilastik and Fiji
 
                 convert_channel(src, dst, lookup_table(lo, hi))
 
-            meta["channels"][f"channel{channel}"] = dict(file=out_path.name, lo=lo, hi=hi, range=range_source)
+            meta["channels"][f"channel{channel}"] = dict(file=out_path.name, lo=lo, hi=hi, range=range_source,
+                                                         voxel_size_um=voxel)
 
     # e.g. out.h5 -> out-meta.json
     meta_path = args.output.with_name(f"{args.output.stem}-meta.json")
@@ -207,7 +222,7 @@ def main():
 
     print("-" * 80)
     print("Done. Written to:")
-    for path in outputs:
+    for path in outputs.values():
         print(f"  {path}")
     print(f"Settings written to {meta_path}")
 

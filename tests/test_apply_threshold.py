@@ -17,4 +17,4 @@ def test_tiled_equals_one_call(prob_path, tmp_path, low, high):
     assert tiled.dtype == whole.dtype
     assert tiled.shape == whole.shape
     assert np.array_equal(tiled, whole), f"{np.count_nonzero(tiled != whole)} voxels differ"
-    assert (tmp_path / "mask_res_16x16x16.h5").exists()
+    assert not (tmp_path / "mask_res_16x16x16.h5").exists()        # no downsampled copy any more

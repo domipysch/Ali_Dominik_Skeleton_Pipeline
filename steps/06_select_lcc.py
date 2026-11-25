@@ -10,12 +10,11 @@ from scipy import ndimage
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from tqdm import tqdm
-from utils import blocks, compress_chunks, downsample_h5, downsampled_path, ordered_results
+from utils import blocks, compress_chunks, ordered_results
 
 
 DATASET = "data"            # dataset name in input and output
 GZIP_LEVEL = 2              # output compression (1 = fastest, 9 = smallest)
-DOWNSAMPLING = 16           # downsampling factor per axis of the low-res copy
 CHUNKS = (64, 64, 64)       # output chunks (z, y, x)
 BLOCK = (64, 512, 512)      # voxels (z, y, x) per worker task (a multiple of CHUNKS)
 N_WORKERS = min(32, (os.cpu_count() or 1))  # parallel worker processes
@@ -60,7 +59,7 @@ def main():
     parser = argparse.ArgumentParser(description="Keep only the largest connected component of a binary mask "
                                                  "(.h5, 0/1) and write it as a 0/1 mask (.h5)")
     parser.add_argument("--input", type=Path, required=True,
-                        help="mask .h5 from 05_apply_threshold.py (or its _res_16x16x16.h5 copy)")
+                        help="mask .h5 from 05_apply_threshold.py")
     parser.add_argument("--output", type=Path, required=True, help="output mask .h5")
     args = parser.parse_args()
 
@@ -77,12 +76,10 @@ def main():
         attrs = dict(src.attrs)
     # Chunks must not exceed the volume shape
     chunks = tuple(min(c, size) for c, size in zip(CHUNKS, shape))
-    make_low_res = min(shape) >= DOWNSAMPLING
 
     # Check output (e.g. lcc.h5 -> lcc-meta.json)
     meta_path = args.output.with_name(f"{args.output.stem}-meta.json")
-    low_res = downsampled_path(args.output, DOWNSAMPLING)
-    existing = [path for path in (args.output, meta_path, low_res) if path.exists()]
+    existing = [path for path in (args.output, meta_path) if path.exists()]
     if existing:
         print("Output already exists:")
         for path in existing:
@@ -90,15 +87,11 @@ def main():
         answer = input("Overwrite? [y/N] ")
         if answer.strip().lower() != "y":
             raise SystemExit("Aborted, nothing written.")
-        # downsample_h5 refuses to overwrite
-        low_res.unlink(missing_ok=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     print("-" * 80)
     print(f"Input:  {args.input}")
     print(f"Output: {args.output}")
-    if make_low_res:
-        print(f"Low-res: {low_res} ({DOWNSAMPLING}x downsampled per axis)")
     print(f"Shape: {shape} (z, y, x), {N_WORKERS} workers")
     print("Mask: nonzero voxels in the largest connected component (6 neighbours) -> 1, else 0")
     print("-" * 80)
@@ -184,15 +177,8 @@ def main():
     meta_path.write_text(json.dumps(meta, indent=2))
 
     print("-" * 80)
-    print(f"Mask written to {args.output}")
+    print(f"Done. Mask written to {args.output}")
     print(f"Settings written to {meta_path}")
-
-    # Low-res copy of the mask
-    if make_low_res:
-        downsample_h5(args.output, dataset=DATASET, factor=DOWNSAMPLING)
-        print(f"Done. Low-res copy written to {low_res}")
-    else:
-        print(f"Done. No low-res copy: the volume is smaller than {DOWNSAMPLING} voxels along an axis")
 
 
 if __name__ == "__main__":
