@@ -119,6 +119,30 @@ def test_skipped_channel(project, tmp_path):
     assert [c["index"] for c in sample.channels] == [0, 1]
 
 
+def test_rename_sample(project, sample, tmp_path):
+    """Renaming a sample renames its folder; runs refer to each other relative to it, so the branch stays intact."""
+    lcc = branch_to(sample, "lcc")
+    renamed = project.rename_sample(sample, "Mouse 1 left")
+    assert renamed.id == "Mouse-1-left" and renamed.name == "Mouse 1 left"
+    assert renamed.path.is_dir() and renamed.ims.is_file()
+    assert [s.id for s in project.samples()] == ["Mouse-1-left"]
+    assert [p.name for p in project.samples_dir.iterdir()] == ["Mouse-1-left"]       # the old folder is gone
+    moved = renamed.run(lcc.rel_path)
+    assert [r.data["step"] for r in chain(moved)][0] == "convert"
+    assert input_options(renamed, STEPS["maskel"].inputs[0], moved)[0]["path"].endswith("lcc.h5")
+    # Only the case changes (the same folder on Windows): renamed all the same
+    again = project.rename_sample(renamed, "  Mouse 1 LEFT ")
+    assert again.name == "Mouse 1 LEFT" and [p.name for p in project.samples_dir.iterdir()] == ["Mouse-1-LEFT"]
+
+    other = project.add_sample("other", "WT", make_ims(tmp_path / "s5"), {0: "Nerves", 1: "Nerves"})
+    with pytest.raises(ValueError, match="already exists"):
+        project.rename_sample(other, "mouse 1 left")
+    fake_run(other, "convert", status=QUEUED)
+    with pytest.raises(ValueError, match="queued or running"):
+        project.rename_sample(other, "other 2")
+    assert project.sample("other").name == "other"
+
+
 def test_branches(sample):
     """Runs with different settings from the same parent split the branch; failed tries do not."""
     assert [b.runs for b in branches(sample, 0)] == [[]]

@@ -221,6 +221,33 @@ class Project:
             raise
         return Sample(self, path)
 
+    def rename_sample(self, sample, name):
+        """Give a sample a new name; its folder is renamed to match (samples/<slug of the name>).
+
+        Everything inside refers to other files relative to the sample folder, so nothing else changes. Not while a
+        run of the sample is queued or running (their commands hold the old paths). Returns the renamed sample.
+        """
+        name = name.strip()
+        new_id = slugify(name)
+        if not new_id:
+            raise ValueError("The name needs at least one letter or digit")
+        if new_id == sample.id:
+            sample.update(name=name)
+            return sample
+        target = self.samples_dir / new_id
+        # (on Windows a name that differs only in case is the same folder: that rename is fine)
+        if target.exists() and not os.path.samefile(target, sample.path):
+            raise ValueError(f"A sample folder '{new_id}' already exists")
+        if any(run.status in ACTIVE for run in sample.runs()):
+            raise ValueError("A run of this sample is queued or running: wait for it or cancel it first")
+        try:
+            os.rename(sample.path, target)
+        except OSError as error:
+            raise ValueError(f"Could not rename the folder (is a file of it open in another program?): {error}")
+        renamed = Sample(self, target)
+        renamed.update(name=name)
+        return renamed
+
     def all_runs(self):
         return [run for sample in self.samples() for run in sample.runs()]
 

@@ -371,9 +371,7 @@ def add_sample_dialog(on_added=None):
             Ctx.queue.changed()
             ui.notify(f"Added {sample.name}", type="positive")
             if on_added is not None:
-                on_added(sample)
-            else:
-                ui.navigate.to(sample_url(sample.id))
+                on_added(sample)        # (otherwise: stay on the page; the samples table shows the new sample)
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             cancel_button = ui.button("Cancel", on_click=dialog.close).props("flat color=grey-8")
@@ -615,8 +613,11 @@ def sample_page(sample_id: str, channel: int | None = None, branch: str | None =
                     ui.button("Delete", icon="delete_outline", on_click=lambda: delete_sample(s)) \
                         .props("flat color=negative")
 
-        def refresh_everything():
-            ui.navigate.reload()
+        def refresh_everything(saved=None):
+            if saved is not None and saved.id != sample_id:     # renamed: the folder, so the page address changed
+                ui.navigate.to(sample_url(saved.id, channel))
+            else:
+                ui.navigate.reload()
 
         info()
         if channel is None:
@@ -905,7 +906,7 @@ def edit_sample_dialog(sample, on_saved):
     project = Ctx.project
     # (inline max-width: Quasar limits dialog cards to 560px with a more specific CSS rule)
     with ui.dialog() as dialog, ui.card().classes("dialog-card w-[780px]").style("max-width: 95vw"):
-        dialog_title("Edit sample", f"Folder: {sample.id} (stays the same when the name changes)")
+        dialog_title("Edit sample")
         with ui.column().classes("w-full gap-3"):
             with ui.row().classes("w-full gap-3 no-wrap"):
                 name = ui.input("Name", value=sample.name).classes("grow")
@@ -935,9 +936,16 @@ def edit_sample_dialog(sample, on_saved):
                           type="negative")
                 return
             channels = [dict(c, structure=structures[c["index"]]) for c in sample.all_channels]
-            sample.update(name=name.value.strip() or sample.id, tag=tag.value, notes=notes.value, channels=channels)
+            # The name first: its folder is renamed with it, which can fail (a file open elsewhere, a run active)
+            try:
+                saved = project.rename_sample(sample, name.value.strip() or sample.name)
+            except ValueError as error:
+                ui.notify(str(error), type="negative", multi_line=True)
+                return
+            saved.update(tag=tag.value, notes=notes.value, channels=channels)
             dialog.close()
-            on_saved()
+            Ctx.queue.changed()
+            on_saved(saved)
             ui.notify("Saved", type="positive")
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):

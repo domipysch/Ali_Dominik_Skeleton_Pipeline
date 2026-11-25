@@ -751,7 +751,8 @@ class NewRunForm:
             ui.notify(errors[0] if errors else "Nothing to run", type="negative")
             return
         chosen = self.chosen()
-        existing = self.existing()
+        # A manual step is never 'the same' as before (another ilastik training gives another result)
+        existing = self.existing() if not self.step.manual else []
         made, skipped = [], 0
         for params, _ in planned:
             if any(same_run(r, params, chosen, self.parent) for r in existing):     # never compute the same twice
@@ -759,7 +760,9 @@ class NewRunForm:
                 continue
             made.append(create_run(self.sample, self.step, params, chosen, self.channel, self.parent))
         Ctx.queue.changed()
-        if self.step.manual:
+        if not made:
+            ui.notify("Already computed or queued with these settings", type="warning")
+        elif self.step.manual:
             ui.notify(f"Started {made[0].id}: follow the instructions", type="positive")
         else:
             text = f"Queued {len(made)} run(s)" + (f", skipped {skipped} already computed" if skipped else "")
