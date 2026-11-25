@@ -8,6 +8,9 @@ Input: reconstructed `.ims` file by Luxendo.
 python -m orchestrator <project folder>
 ```
 
+or, on Windows, `start_gui.bat <project folder>` (uses the Python of `.venv`, no need to activate it; drag a project
+folder onto it, or double-click it and enter the folder; options such as `--port 8090` go after the folder).
+
 Opens a browser tab (http://127.0.0.1:8080). A new, empty folder becomes a new project. In the GUI you can
 
 - add samples (name, tag, the `.ims`, which is copied into the sample folder, and the structure each channel shows,
